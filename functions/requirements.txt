@@ -1,0 +1,4 @@
+firebase-functions==0.4.3
+firebase-admin==6.9.0
+requests==2.32.3
+tzdata==2025.2

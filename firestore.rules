@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function owner(uid) { return signedIn() && request.auth.uid == uid; }
+    function validMinor(v) { return v is int && v >= 0 && v <= 1000000000; }
+
+    // Merchant-managed reference data. Written only with admin access
+    // (console / Admin SDK); Cloud Functions price orders from these.
+    match /catalog_products/{id} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    match /campaigns/{id} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /users/{uid} {
+      allow read: if owner(uid);
+      allow create, update: if owner(uid) && request.resource.data.keys().hasOnly([
+        'displayName', 'email', 'paypalMeUsername', 'notifyPayments',
+        'notifyRenewals', 'notifyActivity', 'fcmTokens', 'createdAt'
+      ]);
+      allow delete: if false;
+
+      match /conversations/{cid}/messages/{mid} {
+        allow read, write: if owner(uid);
+      }
+
+      match /expense_groups/{id} {
+        allow read, delete: if owner(uid);
+        allow create, update: if owner(uid)
+          && validMinor(request.resource.data.totalMinor)
+          && request.resource.data.participants is list
+          && request.resource.data.participants.size() <= 50;
+      }
+
+      match /quotations/{id} {
+        allow read, write: if owner(uid);
+      }
+
+      match /subscriptions/{id} {
+        allow read, delete: if owner(uid);
+        allow create, update: if owner(uid)
+          && request.resource.data.name is string
+          && validMinor(request.resource.data.amountMinor);
+      }
+
+      match /refund_requests/{id} {
+        allow read, write: if owner(uid);
+      }
+
+      // Payment records: written only by Cloud Functions after PayPal
+      // verification, so a client can never mark something as paid.
+      match /orders/{id} {
+        allow read: if owner(uid);
+        allow write: if false;
+      }
+      match /donations/{id} {
+        allow read: if owner(uid);
+        allow write: if false;
+      }
+
+      // Clients may only write their own self-tracked entries; entries with
+      // source 'server' (PayPal-verified) are backend-only.
+      match /activity/{id} {
+        allow read: if owner(uid);
+        allow create: if owner(uid)
+          && request.resource.data.source == 'client'
+          && request.resource.data.type in ['expense_split', 'quotation', 'refund'];
+        allow update: if owner(uid)
+          && resource.data.source == 'client'
+          && request.resource.data.source == 'client'
+          && request.resource.data.type == resource.data.type;
+        allow delete: if owner(uid) && resource.data.source == 'client';
+      }
+    }
+  }
+}

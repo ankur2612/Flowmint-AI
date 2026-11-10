@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches AppColors.background so launch blends into the Flutter UI. -->
+    <color name="flowmint_background">#071B33</color>
+</resources>
